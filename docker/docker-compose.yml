@@ -1,9 +1,108 @@
+networks:
+  webshop-automation-net:
+
 services:
   webshop-automation:
     build:
       context: ..
       dockerfile: ./Dockerfile
+    container_name: webshop-automation
     restart: unless-stopped
-    ports:
-      - "3344:8080"
 
+    env_file:
+      - .env
+
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+
+      SERVER_HOST: ${SERVER_HOST_PROD}
+      SERVER_PORT: ${API_PORT}
+
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-webshop-automation:5432/${POSTGRES_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+
+      SPRING_AI_OPENAI_API_KEY: ${OPENAI_API_KEY}
+      SPRING_AI_OLLAMA_BASE_URL: http://ollama:11434
+
+      VECTOR_BD_QDRANT_URL: http://qdrant:6333
+
+    ports:
+      - "${API_PORT}:${API_PORT}"
+
+    networks:
+      - webshop-automation-net
+
+    depends_on:
+      postgres-webshop-automation:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      ollama:
+        condition: service_started
+
+  postgres-webshop-automation:
+    image: postgres:16
+    container_name: webshop-automation-postgres
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT}:5432"
+
+    networks:
+      - webshop-automation-net
+
+    volumes:
+      - ./volumes/postgres:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: webshop-automation-qdrant
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:${QDRANT_PORT}:6333"
+
+    networks:
+      - webshop-automation-net
+
+    volumes:
+      - ./volumes/qdrant:/qdrant/storage
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: webshop-automation-ollama
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    environment:
+      OLLAMA_KEEP_ALIVE: 24h
+
+    ports:
+      - "127.0.0.1:${OLLAMA_PORT}:11434"
+
+    networks:
+      - webshop-automation-net
+
+    volumes:
+      - ./volumes/ollama:/root/.ollama
